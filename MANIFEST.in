@@ -1,0 +1,3 @@
+recursive-include telomerehunter *
+include scripts/telomerehunter
+include README.md

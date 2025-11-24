@@ -1,0 +1,570 @@
+#!python
+
+# Copyright 2015 Lina Sieverling
+
+# This file is part of TelomereHunter.
+
+# TelomereHunter is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+
+# TelomereHunter is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+
+# You should have received a copy of the GNU General Public License
+# along with TelomereHunter.  If not, see <http://www.gnu.org/licenses/>.
+
+
+
+import os
+import shutil
+import sys
+import argparse
+import inspect
+import errno
+import multiprocessing
+import re
+
+import telomerehunter
+
+source_directory = os.path.dirname(inspect.getsourcefile(telomerehunter))
+
+########################
+### define functions ###
+########################
+
+# creat directory recursive
+def mkdir_p(path):
+    try:
+        os.makedirs(path)
+    except OSError as exc: # Python >2.5
+        if exc.errno == errno.EEXIST and os.path.isdir(path):
+            pass
+        else: raise
+
+
+# check if output of filtering step already exists for sample
+def check_filtering_output(outdir_sample, pid, sample_id):
+    return os.path.exists(outdir_sample + pid + '_filtered.bam') and os.path.exists(outdir_sample + pid + '_filtered_name_sorted.bam') and os.path.exists(outdir_sample + pid + '_readcount.tsv') and os.path.exists(outdir_sample + pid + '_' + sample_id + '_gc_content.tsv')
+    
+
+def promt_rerun_filtering(outdir_sample, pid, sample_id):
+    if check_filtering_output(outdir_sample, pid, sample_id):
+    #os.path.exists(outdir_sample + pid + '_filtered.bam') and os.path.exists(outdir_sample + pid + '_filtered_name_sorted.bam') + os.path.exists(outdir_sample + pid + '_readcount.tsv') + os.path.exists(outdir_sample + pid + '_' + sample_id + '_gc_content.tsv'):
+        overwrite = raw_input('\n' + sample_id.title() + ' output files of TelomereHunter filtering step already exist in ' + outdir_sample + '. Rerun filtering step and overwrite these files? [y/n] --> ')
+        
+        while overwrite not in ['y', 'yes', 'n', 'no']:
+            overwrite = raw_input('Rerun filtering step? Please enter y or n --> ')
+
+        if overwrite in ['n', 'no']:
+            return False
+        else:
+            return True
+    else:
+        return True
+
+
+def run_sample(sample_name,
+               sample_bam,
+               banding_file,
+               outdir_sample,
+               pid,
+               sample_id,
+               read_length,
+               repeat_threshold_calc,
+               repeat_threshold_str,
+               repeat_threshold_set,
+               per_read_length,
+               mapq_threshold,
+               repeats,
+               consecutive,
+               remove_duplicates,
+               filter_telomere_reads,
+               sort_telomere_reads,
+               estimate_telomere_content,
+               gc_lower,
+               gc_upper):
+
+    if filter_telomere_reads:
+        print '------ ' + sample_name + ': started filtering telomere reads ------'
+        telomerehunter.filter_telomere_reads.filter_telomere_reads(bam_file=sample_bam,
+                                      band_file=banding_file,
+                                      out_dir=outdir_sample,
+                                      pid=pid,
+                                      sample=sample_id,
+                                      repeat_threshold_calc=repeat_threshold_calc,
+                                      repeat_threshold_set=repeat_threshold_set,
+                                      mapq_threshold=mapq_threshold,
+                                      repeats=repeats,
+                                      consecutive_flag=consecutive,
+                                      remove_duplicates=remove_duplicates)
+
+    if sort_telomere_reads:
+        print '------ ' + sample_name + ': started sorting telomere reads ------'
+        telomerehunter.sort_telomere_reads.sort_telomere_reads(input_dir=outdir_sample, 
+                                      band_file=banding_file,
+                                      out_dir=outdir_sample,
+                                      pid=pid,
+                                      mapq_threshold=mapq_threshold,
+                                      repeats=repeats)
+    
+    
+        # get a table with repeat frequencies per intratelomeric read
+        telomerehunter.repeat_frequency_intratelomeric.repeat_frequency_intratelomeric(input_path=outdir_sample,
+                                                   out_dir=outdir_sample, 
+                                                   pid=pid,
+                                                   repeats=repeats)
+
+    if estimate_telomere_content:
+        print '------ ' + sample_name + ': started estimating telomere content ------'
+        
+        #get gc content distribution of intratelomeric reads
+        telomerehunter.estimate_telomere_content.get_gc_content_distribution(bam_file=outdir_sample + '/' + pid + '_filtered_intratelomeric.bam',
+                                            out_dir=outdir_sample,
+                                            pid=pid + '_intratelomeric',
+                                            sample=sample_id,
+                                            remove_duplicates=remove_duplicates)
+
+        #estimate telomere content
+        telomerehunter.estimate_telomere_content.estimate_telomere_content(input_dir=outdir_sample,
+                                          out_dir=outdir_sample,
+                                          pid=pid,
+                                          sample=sample_id,
+                                          read_length=read_length,
+                                          repeat_threshold_set=repeat_threshold_set,
+                                          per_read_length=per_read_length,
+                                          repeat_threshold_calc=repeat_threshold_str,
+                                          gc_lower=gc_lower,
+                                          gc_upper=gc_upper)
+
+    if TVR_screen:
+        print '------ ' + sample_name + ': started TVR screen ------'
+
+        #screen for TVRs
+        telomerehunter.TVR_screen.TVR_screen(main_path=outdir_sample, pid=pid, sample=sample_id, min_base_quality=20)
+
+        #get summed intratelomeric read length
+        telomerehunter.get_summed_intratelomeric_read_length.summed_intratelomeric_read_length(main_path=outdir_sample, pid=pid, sample=sample_id)
+
+    if TVR_context:
+        print '------ ' + sample_name + ': started TVR context ------'
+
+        #get context of selected TVRs
+        for TVR in TVRs_for_context:
+            telomerehunter.TVR_context.TVR_context(main_path=outdir_sample, pid=pid, sample=sample_id, pattern=TVR, 
+                                                   min_base_quality=20, context_before=bp_context, context_after=bp_context, tel_file="filtered_intratelomeric")
+
+
+
+if __name__ == '__main__':
+
+    def file_exists(parser, x):
+        if not os.path.exists(x):
+            parser.error("The file %s does not exist!" % x)
+        return x
+
+    ################################
+    ### print copy right message ###
+    ################################
+
+    print "\n"
+    print "\tTelomereHunter  Copyright (C) 2015  Lina Sieverling, Philip Ginsbach, Lars Feuerbach" 
+    print "\tThis program comes with ABSOLUTELY NO WARRANTY." 
+    print "\tThis is free software, and you are welcome to redistribute it"
+    print "\tunder certain conditions. For details see the GNU General Public License"
+    print "\tin the license copy received with TelomereHunter or <http://www.gnu.org/licenses/>."
+    print "\n"
+
+
+    ####################################
+    ### print telomerehunter version ###
+    ####################################
+
+    print "TelomereHunter 1.1.0" 
+    print "\n"
+
+    #################
+    ### set flags ###
+    #################
+
+    tumor_flag = True
+    control_flag = True
+
+
+    ################################
+    ### get and check parameters ###
+    ################################
+
+    # Cmd line input.
+    parser = argparse.ArgumentParser(description='Estimation of telomere content from WGS data of a tumor and/or a control sample.',
+                     epilog='Contact Lina Sieverling (l.sieverling@dkfz-heidelberg.de) for questions and support.')
+
+    parser.add_argument('-ibt', '--inputBamTumor', type=lambda x: file_exists(parser, x), dest="tumor_bam", 
+            help="Path to the indexed input BAM file of the tumor sample.")
+    parser.add_argument('-ibc', '--inputBamControl', type=lambda x: file_exists(parser, x), dest="control_bam",
+            help="Path to the indexed input BAM file of the control sample.")
+    parser.add_argument('-o', '--outPath', type=str, dest="parent_outdir", required=True, metavar='OUTPUT_DIR',
+            help="Path to the output directory into which all results are written.")  
+    parser.add_argument('-p', '--pid', type=str, dest="pid", required=True,
+            help="Sample name used in output files and diagrams (required).")
+    parser.add_argument('-b', '--bandingFile', type=lambda x: file_exists(parser, x), dest="banding_file", default=source_directory + '/hg19_cytoBand.txt',
+            help="Path to a tab-separated file with information on chromosome banding. \
+            The first four columns of the table have to contain the chromosome name, \
+            the start and end position and the band name. The table should not have a header. \
+            If no banding file is specified, the banding information of hg19 will be used.")
+    parser.add_argument('-rt', '--repeatThreshold', type=int, dest="repeat_threshold_set",
+            help="The number of repeats needed for a read to be classified as telomeric. \
+            If no repeat threshold is defined, TelomereHunter will calculate the repeat_threshold \
+            depending on the read length with the following formula: \
+            repeat_threshold = floor(read_length * 6/100)")
+    parser.add_argument('-rl', '--perReadLength', dest="per_read_length", action="store_true",
+            help="Repeat threshold is set per 100 bp read length. \
+            The used repeat threshold will be: floor(read_length * repeat_threshold/100) \
+            E.g. Setting -rt 8 -rl means that 8 telomere repeats are required per 100 bp read length. \
+            If the read length is 50 bp, the threshold is set to 4.")
+    parser.add_argument('-mqt', '--mappingQualityThreshold', type=int, dest="mapq_threshold", default=8,
+            help="The mapping quality needed for a read to be considered as mapped (default = 8).")
+    parser.add_argument('-d', '--removeDuplicates', dest="remove_duplicates", action="store_true",
+            help="Reads marked as duplicates in the input bam file(s) are removed in the filtering step.")
+    parser.add_argument('-r', '--repeats', nargs='+', dest="repeats", type=str, default=["TTAGGG", "TGAGGG", "TCAGGG", "TTGGGG"],
+            help="List of telomere repeat types to search for. Reverse complements are automatically generated and do not need to be specified! By default, TelomereHunter searches for t-, g-, c- and j-type repeats (TTAGGG TGAGGG TCAGGG TTGGGG).")
+    parser.add_argument('-con', '--consecutive', dest="consecutive", action="store_true",
+            help="Search for consecutive repeats.")
+    parser.add_argument('-gc1', '--lowerGC', type=int, dest="lowerGC", default=48,
+            help="Lower limit used for GC correction of telomere content. The value must be an integer between 0 and 100 (default = 48).") 
+    parser.add_argument('-gc2', '--upperGC', type=int, dest="upperGC", default=52,
+            help="Upper limit used for GC correction of telomere content. The value must be an integer between 0 and 100 (default = 52).") 
+    parser.add_argument("-nf", "--noFiltering",dest="noFiltering",  action="store_true",
+            help="If the filtering step of TelomereHunter has already been run previously, skip this step.")   
+    parser.add_argument('-rc', '--repeatsContext', nargs='+', dest="TVRs_for_context", type=str, default=["TCAGGG", "TGAGGG", "TTGGGG", "TTCGGG", "TTTGGG", "ATAGGG", "CATGGG", "CTAGGG", "GTAGGG", "TAAGGG"],
+            help="List of telomere variant repeats for which to analyze the sequence context. Reverse complements are automatically generated and do not need to be specified! Counts for these telomere variant repeats (arbitrary and singleton context) will be added to the summary table. Default repeats: TCAGGG TGAGGG TTGGGG TTCGGG TTTGGG ATAGGG CATGGG CTAGGG GTAGGG TAAGGG).")
+    parser.add_argument('-bp', '--bpContext', type=int, dest="bp_context", default=18,
+            help="Number of base pairs on either side of the telomere variant repeat to investigate. Please use a number that is divisible by 6.") 
+    parser.add_argument('-pl', '--parallel', dest="run_parallel", action="store_true",
+            help="The filtering, sorting and estimating steps of the tumor and control sample are run in parallel. This will speed up the computation time of TelomereHunter.")
+    parser.add_argument("-pff", "--plotFileFormat",dest="plotFileFormat", default='pdf', choices=['pdf', 'png', 'svg', 'all'],
+            help="File format of output diagrams. Choose from pdf (default), png, svg or all (pdf, png and svg).")    
+    parser.add_argument("-p1", "--plotChr",dest="plotChr",  action="store_true",
+            help="Make diagrams with telomeric reads mapping to each chromosome. If none of the options p1/p2/p3/p4/p5/p6 are chosen, all diagrams will be created.")    
+    parser.add_argument("-p2", "--plotFractions",dest="plotFractions",  action="store_true",
+            help="Make a diagram with telomeric reads in each fraction (intrachromosomal, subtelomeric, junction spanning, intratelomeric). If none of the options p1/p2/p3/p4/p5/p6 are chosen, all diagrams will be created.")
+    parser.add_argument("-p3", "--plotTelContent",dest="plotTelContent",  action="store_true",
+            help="Make a diagram with the gc corrected telomere content in the analyzed samples. If none of the options p1/p2/p3/p4/p5/p6 are chosen, all diagrams will be created.")   
+    parser.add_argument("-p4", "--plotGC",dest="plotGC",  action="store_true",
+            help="Make a diagram with GC content distributions in all reads and in intratelomeric reads. If none of the options p1/p2/p3/p4/p5/p6 are chosen, all diagrams will be created.")   
+    parser.add_argument("-p5", "--plotRepeatFreq",dest="plotRepeatFreq",  action="store_true",
+            help="Make histograms of the repeat frequencies per intratelomeric read. If none of the options p1/p2/p3/p4/p5/p6 are chosen, all diagrams will be created.")  
+    parser.add_argument("-p6", "--plotTVR",dest="plotTVR",  action="store_true",
+            help="Make plots for telomere variant repeats.")   
+    parser.add_argument("-p7", "--plotSingleton",dest="plotSingleton",  action="store_true",
+            help="Make plots for singleton telomere variant repeats.")   
+    parser.add_argument("-p8", "--plotNone",dest="plotNone",  action="store_true",
+            help="Do not make any diagrams. If none of the options p1/p2/p3/p4/p5/p6/p7/p8 are chosen, all diagrams will be created.")    
+    parser.add_argument("-prc", "--plotRevCompl",dest="plotRevCompl",  action="store_true",
+            help="Distinguish between forward and reverse complement telomere repeats in diagrams.")   
+
+
+    # Create dict from parser args and save keys as variables
+    args = vars(parser.parse_args())
+    for k, v in args.iteritems():
+        globals()[k]=v
+        locals()[k]=v
+
+
+
+    #check which bam files were specified
+    if not tumor_bam and not control_bam:
+        parser.error('argument -ibt/--inputBamTumor or -ibc/--inputBamControl is required') 
+
+    if not tumor_bam:
+        tumor_flag = False
+        print 'Tumor BAM file was not specified. Only running control BAM file.'      
+    elif not control_bam:
+        control_flag = False
+        print 'Control BAM file was not specified. Only running tumor BAM file.'  
+
+
+    #check if repeats only contains ACGT
+    for repeat in repeats:
+        x = re.search(r'[^ACGT]', repeat)
+        if x != None:
+            parser.error('argument -r/--repeats should only contain the letters ACGT.') 
+
+
+    for repeat in TVRs_for_context:
+        x = re.search(r'[^ACGT]', repeat)
+        if x != None:
+            parser.error('argument -rc/--repeatsContext should only contain the letters ACGT.') 
+
+
+    #check if bp for sequencing context is divisible by 6
+    if bp_context % 6 != 0:
+        parser.error('argument -bp/--bpContext must be a multiple of 6 (e.g. 6, 12, 18, ...).') 
+
+
+
+    outdir = parent_outdir + '/' + pid
+
+
+    if mapq_threshold < 0 or mapq_threshold > 40:
+        parser.error('argument -mqt/--mappingQualityThreshold must be an integer between 0 and 40.') 
+
+    if lowerGC < 0 or lowerGC > 100:
+        parser.error('argument -gc1/--lowerGC must be an integer between 0 and 100.') 
+
+    if upperGC < 0 or upperGC > 100:
+        parser.error('argument -gc2/--upperGC must be an integer between 0 and 100.') 
+
+    if lowerGC >= upperGC:
+        parser.error('argument -gc1/--lowerGC must be less than argument -gc2/--upperGC.') 
+
+    if plotNone and (plotChr or plotFractions or plotTelContent or plotGC or plotRepeatFreq or plotTVR or plotSingleton):
+        parser.error('argument -p8/--plotNone should not be specified when other plotting options are selected.') 
+
+    #if no plotting options are selected: plot all diagrams.
+    if not plotChr and not plotFractions and not plotTelContent and not plotGC and not plotRepeatFreq and not plotTVR and not plotSingleton and not plotNone:
+        plotChr=True
+        plotFractions=True
+        plotTelContent=True
+        plotGC=True
+        plotRepeatFreq=True
+        plotTVR=True
+        plotSingleton=True
+
+    if noFiltering:
+        filter_telomere_reads = False
+    else:
+        filter_telomere_reads = True
+
+    sort_telomere_reads = True
+    estimate_telomere_content = True
+    TVR_screen = True
+    TVR_context = True
+    make_plots = True
+
+
+    #############################################################
+
+
+    ################################################
+    ### check if filtering has already been done ###
+    ################################################
+
+    if filter_telomere_reads and tumor_flag:
+        filter_telomere_reads_T = promt_rerun_filtering(outdir_sample=outdir + '/tumor_TelomerCnt_' + pid + '/', pid=pid, sample_id='tumor')
+    elif not filter_telomere_reads and tumor_flag:
+        if not check_filtering_output(outdir_sample=outdir + '/tumor_TelomerCnt_' + pid + '/', pid=pid, sample_id='tumor'):
+            print "Output of filtering step for tumor sample has not been found. Running filtering for this sample..."
+            filter_telomere_reads_T = True
+        else:
+            filter_telomere_reads_T = False
+    else:
+        filter_telomere_reads_T = False
+        
+    if filter_telomere_reads and control_flag:
+        filter_telomere_reads_C = promt_rerun_filtering(outdir_sample=outdir + '/control_TelomerCnt_' + pid + '/', pid=pid, sample_id='control')
+    elif not filter_telomere_reads and control_flag:
+        if not check_filtering_output(outdir_sample=outdir + '/control_TelomerCnt_' + pid + '/', pid=pid, sample_id='control'):
+            print "Output of filtering step for control sample has not been found. Running filtering for this sample..."
+            filter_telomere_reads_C = True
+        else:
+            filter_telomere_reads_C = False
+    else:
+        filter_telomere_reads_C = False
+
+
+    ##############################
+    #### get read lengths      ###
+    ##############################
+
+    if tumor_flag:
+        read_length_tumor = telomerehunter.get_repeat_threshold.get_read_lengths(tumor_bam)
+
+    if control_flag:
+        read_length_control = telomerehunter.get_repeat_threshold.get_read_lengths(control_bam)
+
+
+    ##############################
+    #### get repeat_thresholds ###
+    ##############################
+
+    if not repeat_threshold_set:
+
+        sys.stdout.write('\nRepeat threshold was not set by user. Setting it to 6 reads per 100 bp read length.\n')
+
+        repeat_threshold_set = 6
+        per_read_length = True
+
+
+    if per_read_length:
+
+        if tumor_flag:
+            sys.stdout.write('Calculating repeat threshold for tumor sample: ')
+            (repeat_threshold_tumor, repeat_threshold_str_tumor) = telomerehunter.get_repeat_threshold.get_repeat_threshold(read_length_tumor, repeat_threshold_set)
+            #repeat_threshold_tumor = telomerehunter.get_repeat_threshold.get_repeat_threshold(tumor_bam, repeat_threshold_set)
+
+        if control_flag:
+            sys.stdout.write('Calculating repeat threshold for control sample: ')
+            (repeat_threshold_control, repeat_threshold_str_control) = telomerehunter.get_repeat_threshold.get_repeat_threshold(read_length_control, repeat_threshold_set)
+            #repeat_threshold_control = telomerehunter.get_repeat_threshold.get_repeat_threshold(control_bam, repeat_threshold_set)
+
+        if tumor_flag and control_flag:
+            if repeat_threshold_tumor == repeat_threshold_control:
+                repeat_threshold_plot = repeat_threshold_tumor
+            else:
+                repeat_threshold_plot = 'n'
+        elif tumor_flag:
+            repeat_threshold_plot = repeat_threshold_tumor
+        elif control_flag:
+            repeat_threshold_plot = repeat_threshold_control
+
+    else:
+        repeat_threshold_tumor=repeat_threshold_set
+        repeat_threshold_control=repeat_threshold_set
+        repeat_threshold_str_tumor=str(repeat_threshold_set)
+        repeat_threshold_str_control=str(repeat_threshold_set)
+        repeat_threshold_plot=repeat_threshold_set
+    
+
+
+
+    #################################
+    ## run telomerehunter for PID ###
+    #################################
+
+    sys.stdout.write('\n')
+
+    threads = []
+
+    if tumor_flag and (filter_telomere_reads_T or sort_telomere_reads or estimate_telomere_content):  
+        sample_id_T = 'tumor'
+        outdir_T = outdir + '/' + sample_id_T + '_TelomerCnt_' + pid + '/'
+        mkdir_p(outdir_T)
+
+        thread_T = multiprocessing.Process(target=run_sample, args=("Tumor Sample",
+                                                                    tumor_bam,
+                                                                    banding_file,
+                                                                    outdir_T,
+                                                                    pid,
+                                                                    sample_id_T,
+                                                                    read_length_tumor,
+                                                                    repeat_threshold_tumor,
+                                                                    repeat_threshold_str_tumor,
+                                                                    repeat_threshold_set,
+                                                                    per_read_length,
+                                                                    mapq_threshold,
+                                                                    repeats,
+                                                                    consecutive,
+                                                                    remove_duplicates,
+                                                                    filter_telomere_reads_T,
+                                                                    sort_telomere_reads,
+                                                                    estimate_telomere_content,
+                                                                    lowerGC,
+                                                                    upperGC,))
+
+        thread_T.start()
+        threads.append(thread_T)
+
+        if not run_parallel:
+            thread_T.join()
+
+    if control_flag and (filter_telomere_reads_C or sort_telomere_reads or estimate_telomere_content): 
+        sample_id_C = 'control'
+        outdir_C = outdir + '/' + sample_id_C + '_TelomerCnt_' + pid + '/'
+        mkdir_p(outdir_C)
+
+        thread_C = multiprocessing.Process(target=run_sample, args=("Control Sample",
+                                                                    control_bam,
+                                                                    banding_file,
+                                                                    outdir_C,
+                                                                    pid,
+                                                                    sample_id_C,
+                                                                    read_length_control,
+                                                                    repeat_threshold_control,
+                                                                    repeat_threshold_str_control,
+                                                                    repeat_threshold_set,
+                                                                    per_read_length,
+                                                                    mapq_threshold,
+                                                                    repeats,
+                                                                    consecutive,
+                                                                    remove_duplicates,
+                                                                    filter_telomere_reads_C,
+                                                                    sort_telomere_reads,
+                                                                    estimate_telomere_content,
+                                                                    lowerGC,
+                                                                    upperGC,))
+
+        thread_C.start()
+        threads.append(thread_C)
+        
+        if not run_parallel:
+            thread_C.join()
+
+    # Wait for all threads to complete
+    if run_parallel:
+        for t in threads:
+            t.join()
+
+
+    # make a combined summary file of tumor and control results
+    summary_path = outdir + '/' + pid + '_summary.tsv'
+
+    if tumor_flag and control_flag:
+        shutil.copyfile(outdir + '/tumor_TelomerCnt_' + pid + '/' + pid + '_tumor_summary.tsv', summary_path)
+        os.system("tail -1 " + outdir + '/control_TelomerCnt_' + pid + '/' + pid + '_control_summary.tsv >> ' + summary_path)
+    elif tumor_flag:
+        shutil.copyfile(outdir + '/tumor_TelomerCnt_' + pid + '/' + pid + '_tumor_summary.tsv', summary_path)
+    elif control_flag:
+        shutil.copyfile(outdir + '/control_TelomerCnt_' + pid + '/' + pid + '_control_summary.tsv', summary_path)
+
+
+    # make a table with normalized TVR counts
+    if TVR_screen:
+        os.system("R --no-save --slave --args %s %s %s < %s/normalize_TVR_counts.R" % (outdir, pid, ",".join(TVRs_for_context), source_directory))
+
+    # make TVR context summary tables
+    if TVR_context:
+        os.system("R --no-save --slave --args %s %s %s %s < %s/TVR_context_summary_tables.R" % (outdir, pid, bp_context, ",".join(TVRs_for_context), source_directory))
+
+    # add log2 ratio to summary file
+    os.system("R --no-save --slave --args %s %s < %s/summary_log2.R" % (outdir, pid, source_directory))
+
+    if make_plots and not plotNone:
+        sys.stdout.write('------ making plots ------\n\n')
+    
+        # check if all required R libraries are installed, and install them if they are not
+        check_libraries = os.system('Rscript ' +  source_directory + '/check_R_libraries.R')
+        
+        if check_libraries:
+            sys.exit('[ERROR] Failed to install required R library.')
+
+        if plotChr:
+            os.system("R --no-save --slave --args %s %s %s %s %s %i %s %s %s < %s/plot_spectrum.R" % (source_directory, pid, parent_outdir, str(repeat_threshold_plot), str(consecutive), mapq_threshold, banding_file, plotRevCompl, plotFileFormat, source_directory))
+
+        if plotFractions:
+            os.system("R --no-save --slave --args %s %s %s %s %i %s %s < %s/plot_spectrum_summary.R" % (pid, parent_outdir, str(repeat_threshold_plot), str(consecutive), mapq_threshold, plotRevCompl, plotFileFormat, source_directory))
+
+        if plotTelContent:
+            os.system("R --no-save --slave --args %s %s %s %s %i %s %s %i %i < %s/plot_tel_content.R" % (pid, parent_outdir, str(repeat_threshold_plot), str(consecutive), mapq_threshold, plotRevCompl, plotFileFormat, lowerGC, upperGC, source_directory))
+
+        if plotGC:
+            os.system("R --no-save --slave --args %s %s %s %s %i %i < %s/plot_gc_content.R" % (source_directory, pid, parent_outdir, plotFileFormat, lowerGC, upperGC, source_directory))
+
+        if plotRepeatFreq:
+            os.system("R --no-save --slave --args %s %s %s %s %i %s %s < %s/plot_repeat_frequency_intratelomeric.R" % (pid, parent_outdir, str(repeat_threshold_plot), str(consecutive), mapq_threshold, ",".join(repeats), plotFileFormat, source_directory))
+
+        if plotTVR:
+            os.system("R --no-save --slave --args %s %s %s < %s/TVR_plot.R" % (outdir, pid, plotFileFormat, source_directory))
+
+        if plotSingleton:
+            os.system("R --no-save --slave --args %s %s %s %s < %s/singleton_plot.R" % (source_directory, outdir, pid, plotFileFormat, source_directory))
+
+        # merge PDF plots if PDF files are created
+        telomerehunter.merge_pdfs.mergeTelomereHunterPDFs(pid=pid, outdir=parent_outdir)
+
+        # merge most important plots into summary
+        if plotTelContent and plotRepeatFreq and plotTVR and plotSingleton:
+            os.system("R --no-save --slave --args %s %s %s < %s/combine_plots.R" % (outdir, pid, plotFileFormat, source_directory))
