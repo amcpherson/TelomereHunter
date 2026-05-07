@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/env python3
 
 # Copyright 2018 Lina Sieverling
 
@@ -35,7 +35,7 @@ def summed_intratelomeric_read_length(main_path, pid, sample):
 
 	# open input bam_file for reading
 	bam_file = main_path + "/" + pid + "_filtered_intratelomeric.bam"
-	bamfile = pysam.Samfile( bam_file, "rb" )
+	bamfile = pysam.AlignmentFile( bam_file, "rb" )
 
 	summed_read_length = 0
 

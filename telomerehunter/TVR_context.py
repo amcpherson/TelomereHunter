@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/env python3
 
 # Copyright 2018 Lina Sieverling, Lars Feuerbach
 
@@ -51,9 +51,7 @@ def Dictionary2Table(dictionary, outfile_path, cutoff):
 
     table = "\t".join(["Bases", "Count", "Percent"]) + "\n"
 
-    keys = dictionaryInv.keys()
-    keys.sort()
-    keys.reverse()
+    keys = sorted(dictionaryInv.keys(), reverse=True)
 
     total_counts = sum(dictionary.values())
 
@@ -101,7 +99,7 @@ def TVR_context(main_path,
 
     bam_file = main_path + "/" + pid + "_" + tel_file + ".bam"
 
-    bamfile = pysam.Samfile( bam_file, "rb" )
+    bamfile = pysam.AlignmentFile( bam_file, "rb" )
 
 
     #directories for counting of patterns in neighborhood

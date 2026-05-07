@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/env python3
 
 # Copyright 2015 Lina Sieverling, Philip Ginsbach, Lars Feuerbach
 
@@ -46,14 +46,14 @@ def sort_telomere_reads(input_dir, band_file, out_dir, pid, mapq_threshold, repe
 
 
 	# open input bam_file for reading
-	bamfile = pysam.Samfile( input_dir + "/" + pid + "_filtered_name_sorted.bam" , "rb" )
+	bamfile = pysam.AlignmentFile( input_dir + "/" + pid + "_filtered_name_sorted.bam" , "rb" )
 
 
 	# open filtered files for writing
-	intratelomeric_file = pysam.Samfile(out_dir + "/" + pid + "_filtered_intratelomeric.bam", "wb", template=bamfile)
-	junctionspanning_file = pysam.Samfile(out_dir + "/" + pid + "_filtered_junctionspanning.bam", "wb", template=bamfile)
-	subtelomeric_file = pysam.Samfile(out_dir + "/" + pid + "_filtered_subtelomeric.bam", "wb", template=bamfile)
-	intrachromosomal_file = pysam.Samfile(out_dir + "/" + pid + "_filtered_intrachromosomal.bam", "wb", template=bamfile)
+	intratelomeric_file = pysam.AlignmentFile(out_dir + "/" + pid + "_filtered_intratelomeric.bam", "wb", template=bamfile)
+	junctionspanning_file = pysam.AlignmentFile(out_dir + "/" + pid + "_filtered_junctionspanning.bam", "wb", template=bamfile)
+	subtelomeric_file = pysam.AlignmentFile(out_dir + "/" + pid + "_filtered_subtelomeric.bam", "wb", template=bamfile)
+	intrachromosomal_file = pysam.AlignmentFile(out_dir + "/" + pid + "_filtered_intrachromosomal.bam", "wb", template=bamfile)
 
 
 	############################
@@ -145,12 +145,12 @@ def sort_telomere_reads(input_dir, band_file, out_dir, pid, mapq_threshold, repe
 	while True:			
 
 		try:
-			read1 = bamfile.next()
+			read1 = next(bamfile)
 		except: 
 			break
 		      
 		try:
-			read2 = bamfile.next()
+			read2 = next(bamfile)
 		except: 
 			sort_reads_without_mate (read1, references, bands_list, chromosome_list, mapq_threshold, spectrum_list, patterns,
 						intratelomeric_file,
@@ -173,7 +173,7 @@ def sort_telomere_reads(input_dir, band_file, out_dir, pid, mapq_threshold, repe
 							intrachromosomal_file )
 
 				try:
-					read1 = bamfile.next()
+					read1 = next(bamfile)
 				except: 
 					sort_reads_without_mate (read2, references, bands_list, chromosome_list, mapq_threshold, spectrum_list, patterns,
 							intratelomeric_file,
@@ -192,7 +192,7 @@ def sort_telomere_reads(input_dir, band_file, out_dir, pid, mapq_threshold, repe
 							intrachromosomal_file )
 				
 				try:
-					read2 = bamfile.next()
+					read2 = next(bamfile)
 				except: 
 					sort_reads_without_mate (read1, references, bands_list, chromosome_list, mapq_threshold, spectrum_list, patterns,
 							intratelomeric_file,

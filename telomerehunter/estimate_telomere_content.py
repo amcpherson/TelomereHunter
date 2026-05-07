@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/env python3
 
 # Copyright 2015 Lina Sieverling, Philip Ginsbach, Lars Feuerbach
 
@@ -35,7 +35,7 @@ import numpy
 def get_gc_content_distribution(bam_file, out_dir, pid, sample, remove_duplicates):
 
 	# open input bam_file for reading
-	bamfile = pysam.Samfile( bam_file, "rb" )
+	bamfile = pysam.AlignmentFile( bam_file, "rb" )
 
 	# make GC content list
 	gc_content_list = { gc_content:0 for gc_content in range(0,100+1) }
@@ -108,13 +108,13 @@ def estimate_telomere_content(input_dir, out_dir, pid, sample, read_length, repe
 
 	gc_content_list = {}
 
-	with open(gc_content_file,'rb') as tsvin:
-	    tsvin = csv.reader(tsvin, delimiter='\t')
-	    
-	    next(tsvin, None)  # skip the headers
+	with open(gc_content_file,'r') as tsvin:
+		tsvin = csv.reader(tsvin, delimiter='\t')
 
-	    for row in tsvin:
-		gc_content_list[int(row[0])]=int(row[1])
+		next(tsvin, None)  # skip the headers
+
+		for row in tsvin:
+			gc_content_list[int(row[0])]=int(row[1])
 
 
 	# get total number of reads in these bins

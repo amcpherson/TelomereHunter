@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/env python3
 
 # Copyright 2015 Lina Sieverling
 
@@ -37,7 +37,7 @@ import pysam
 def get_read_lengths(bam_file, reads_to_parse=1000):
 
     # open input bam_file for reading
-    bamfile = pysam.Samfile( bam_file, "rb" )
+    bamfile = pysam.AlignmentFile( bam_file, "rb" )
 
     # print unique read lengths of the first N non-supplementary or secondary alignments
     cntr=0
@@ -84,7 +84,7 @@ def get_repeat_threshold(read_lengths_str, repeat_threshold_per_100_bp):
 
 
     elif len(repeat_thresholds)>1:
-        print "Read lengths in sample differ: repeat threshold will be set individually for each read."
+        print("Read lengths in sample differ: repeat threshold will be set individually for each read.")
         repeat_threshold_str = ",".join(str(i) for i in repeat_thresholds)
         repeat_threshold = "n"
 

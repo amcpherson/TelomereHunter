@@ -1,4 +1,4 @@
-#!python
+#!/usr/bin/env python3
 
 # Copyright 2015 Lina Sieverling
 
@@ -54,10 +54,10 @@ def check_filtering_output(outdir_sample, pid, sample_id):
 def promt_rerun_filtering(outdir_sample, pid, sample_id):
     if check_filtering_output(outdir_sample, pid, sample_id):
     #os.path.exists(outdir_sample + pid + '_filtered.bam') and os.path.exists(outdir_sample + pid + '_filtered_name_sorted.bam') + os.path.exists(outdir_sample + pid + '_readcount.tsv') + os.path.exists(outdir_sample + pid + '_' + sample_id + '_gc_content.tsv'):
-        overwrite = raw_input('\n' + sample_id.title() + ' output files of TelomereHunter filtering step already exist in ' + outdir_sample + '. Rerun filtering step and overwrite these files? [y/n] --> ')
+        overwrite = input('\n' + sample_id.title() + ' output files of TelomereHunter filtering step already exist in ' + outdir_sample + '. Rerun filtering step and overwrite these files? [y/n] --> ')
         
         while overwrite not in ['y', 'yes', 'n', 'no']:
-            overwrite = raw_input('Rerun filtering step? Please enter y or n --> ')
+            overwrite = input('Rerun filtering step? Please enter y or n --> ')
 
         if overwrite in ['n', 'no']:
             return False
@@ -89,7 +89,7 @@ def run_sample(sample_name,
                gc_upper):
 
     if filter_telomere_reads:
-        print '------ ' + sample_name + ': started filtering telomere reads ------'
+        print('------ ' + sample_name + ': started filtering telomere reads ------')
         telomerehunter.filter_telomere_reads.filter_telomere_reads(bam_file=sample_bam,
                                       band_file=banding_file,
                                       out_dir=outdir_sample,
@@ -103,7 +103,7 @@ def run_sample(sample_name,
                                       remove_duplicates=remove_duplicates)
 
     if sort_telomere_reads:
-        print '------ ' + sample_name + ': started sorting telomere reads ------'
+        print('------ ' + sample_name + ': started sorting telomere reads ------')
         telomerehunter.sort_telomere_reads.sort_telomere_reads(input_dir=outdir_sample, 
                                       band_file=banding_file,
                                       out_dir=outdir_sample,
@@ -119,7 +119,7 @@ def run_sample(sample_name,
                                                    repeats=repeats)
 
     if estimate_telomere_content:
-        print '------ ' + sample_name + ': started estimating telomere content ------'
+        print('------ ' + sample_name + ': started estimating telomere content ------')
         
         #get gc content distribution of intratelomeric reads
         telomerehunter.estimate_telomere_content.get_gc_content_distribution(bam_file=outdir_sample + '/' + pid + '_filtered_intratelomeric.bam',
@@ -141,7 +141,7 @@ def run_sample(sample_name,
                                           gc_upper=gc_upper)
 
     if TVR_screen:
-        print '------ ' + sample_name + ': started TVR screen ------'
+        print('------ ' + sample_name + ': started TVR screen ------')
 
         #screen for TVRs
         telomerehunter.TVR_screen.TVR_screen(main_path=outdir_sample, pid=pid, sample=sample_id, min_base_quality=20)
@@ -150,7 +150,7 @@ def run_sample(sample_name,
         telomerehunter.get_summed_intratelomeric_read_length.summed_intratelomeric_read_length(main_path=outdir_sample, pid=pid, sample=sample_id)
 
     if TVR_context:
-        print '------ ' + sample_name + ': started TVR context ------'
+        print('------ ' + sample_name + ': started TVR context ------')
 
         #get context of selected TVRs
         for TVR in TVRs_for_context:
@@ -170,21 +170,21 @@ if __name__ == '__main__':
     ### print copy right message ###
     ################################
 
-    print "\n"
-    print "\tTelomereHunter  Copyright (C) 2015  Lina Sieverling, Philip Ginsbach, Lars Feuerbach" 
-    print "\tThis program comes with ABSOLUTELY NO WARRANTY." 
-    print "\tThis is free software, and you are welcome to redistribute it"
-    print "\tunder certain conditions. For details see the GNU General Public License"
-    print "\tin the license copy received with TelomereHunter or <http://www.gnu.org/licenses/>."
-    print "\n"
+    print("\n")
+    print("\tTelomereHunter  Copyright (C) 2015  Lina Sieverling, Philip Ginsbach, Lars Feuerbach")
+    print("\tThis program comes with ABSOLUTELY NO WARRANTY.")
+    print("\tThis is free software, and you are welcome to redistribute it")
+    print("\tunder certain conditions. For details see the GNU General Public License")
+    print("\tin the license copy received with TelomereHunter or <http://www.gnu.org/licenses/>.")
+    print("\n")
 
 
     ####################################
     ### print telomerehunter version ###
     ####################################
 
-    print "TelomereHunter 1.1.0" 
-    print "\n"
+    print("TelomereHunter 1.1.0")
+    print("\n")
 
     #################
     ### set flags ###
@@ -269,7 +269,7 @@ if __name__ == '__main__':
 
     # Create dict from parser args and save keys as variables
     args = vars(parser.parse_args())
-    for k, v in args.iteritems():
+    for k, v in args.items():
         globals()[k]=v
         locals()[k]=v
 
@@ -281,10 +281,10 @@ if __name__ == '__main__':
 
     if not tumor_bam:
         tumor_flag = False
-        print 'Tumor BAM file was not specified. Only running control BAM file.'      
+        print('Tumor BAM file was not specified. Only running control BAM file.')      
     elif not control_bam:
         control_flag = False
-        print 'Control BAM file was not specified. Only running tumor BAM file.'  
+        print('Control BAM file was not specified. Only running tumor BAM file.')  
 
 
     #check if repeats only contains ACGT
@@ -357,7 +357,7 @@ if __name__ == '__main__':
         filter_telomere_reads_T = promt_rerun_filtering(outdir_sample=outdir + '/tumor_TelomerCnt_' + pid + '/', pid=pid, sample_id='tumor')
     elif not filter_telomere_reads and tumor_flag:
         if not check_filtering_output(outdir_sample=outdir + '/tumor_TelomerCnt_' + pid + '/', pid=pid, sample_id='tumor'):
-            print "Output of filtering step for tumor sample has not been found. Running filtering for this sample..."
+            print("Output of filtering step for tumor sample has not been found. Running filtering for this sample...")
             filter_telomere_reads_T = True
         else:
             filter_telomere_reads_T = False
@@ -368,7 +368,7 @@ if __name__ == '__main__':
         filter_telomere_reads_C = promt_rerun_filtering(outdir_sample=outdir + '/control_TelomerCnt_' + pid + '/', pid=pid, sample_id='control')
     elif not filter_telomere_reads and control_flag:
         if not check_filtering_output(outdir_sample=outdir + '/control_TelomerCnt_' + pid + '/', pid=pid, sample_id='control'):
-            print "Output of filtering step for control sample has not been found. Running filtering for this sample..."
+            print("Output of filtering step for control sample has not been found. Running filtering for this sample...")
             filter_telomere_reads_C = True
         else:
             filter_telomere_reads_C = False

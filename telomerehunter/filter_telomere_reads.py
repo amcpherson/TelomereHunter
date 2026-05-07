@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/env python3
 
 # Copyright 2015 Lina Sieverling, Philip Ginsbach, Lars Feuerbach
 
@@ -54,11 +54,11 @@ def filter_telomere_reads(bam_file, band_file, out_dir, pid, sample, repeat_thre
 	#########################
 
 	# open input bam_file for reading
-	bamfile = pysam.Samfile( bam_file, "rb" )
+	bamfile = pysam.AlignmentFile( bam_file, "rb" )
 
 	# open filtered file for writing
 	filtered_file_path = out_dir + "/" + pid + "_filtered.bam"
-	filtered_file = pysam.Samfile(filtered_file_path, "wb", template=bamfile)
+	filtered_file = pysam.AlignmentFile(filtered_file_path, "wb", template=bamfile)
 
 
 

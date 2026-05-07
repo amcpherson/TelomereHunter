@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 # Copyright 2015 Lina Sieverling
 
@@ -20,7 +20,7 @@
 
 
 import os
-from PyPDF2 import PdfFileReader, PdfFileMerger
+from PyPDF2 import PdfReader, PdfMerger
 
 
 ###############################################################################
@@ -43,10 +43,10 @@ def mergeTelomereHunterPDFs(pid, outdir):
 
 
     # merge files
-    merger = PdfFileMerger()
+    merger = PdfMerger()
 
     for filename in pdf_files_ordered:
-        merger.append(PdfFileReader(os.path.join(files_dir, filename), "rb"))
+        merger.append(PdfReader(os.path.join(files_dir, filename)))
 
     merger.write(os.path.join(outdir, pid, pid + "_all_plots_merged.pdf"))
 

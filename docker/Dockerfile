@@ -1,10 +1,4 @@
-FROM python:2.7-slim
-
-# --- Fix apt sources (Buster is EOL) ---
-RUN sed -i 's|deb.debian.org|archive.debian.org|g' /etc/apt/sources.list && \
-    sed -i 's|security.debian.org|archive.debian.org|g' /etc/apt/sources.list && \
-    sed -i '/buster-updates/d' /etc/apt/sources.list && \
-    sed -i '/deb-src/d' /etc/apt/sources.list
+FROM python:3.11-slim
 
 # --- Install system dependencies, R, samtools, and build deps for R packages ---
 RUN apt-get update && \
@@ -38,20 +32,20 @@ RUN apt-get update && \
         r-base-dev \
         && rm -rf /var/lib/apt/lists/*
 
-# --- Upgrade pip (but keep Python 2 compatible) ---
-RUN pip install --upgrade "pip<21.0"
+# --- Upgrade pip ---
+RUN pip install --upgrade pip
 
 # Install telomerehunter from PyPI
 RUN pip install -e git+https://github.com/amcpherson/TelomereHunter.git#egg=telomerehunter
 
 # --- Install required R packages from CRAN ---
-RUN Rscript -e "install.packages('ggplot2', repos='https://packagemanager.posit.co/cran/2019-01-01'); library(ggplot2)"
-RUN Rscript -e "install.packages('reshape2', repos='https://packagemanager.posit.co/cran/2019-01-01'); library(reshape2)"
-RUN Rscript -e "install.packages('gridExtra', repos='https://packagemanager.posit.co/cran/2019-01-01'); library(gridExtra)"
-RUN Rscript -e "install.packages('RColorBrewer', repos='https://packagemanager.posit.co/cran/2019-01-01'); library(RColorBrewer)"
-RUN Rscript -e "install.packages('cowplot', repos='https://packagemanager.posit.co/cran/2019-01-01'); library(cowplot)"
-RUN Rscript -e "install.packages('svglite', repos='https://packagemanager.posit.co/cran/2019-01-01'); library(svglite)"
-RUN Rscript -e "install.packages('dplyr', repos='https://packagemanager.posit.co/cran/2019-01-01'); library(dplyr)"
+RUN Rscript -e "install.packages('ggplot2', repos='https://cloud.r-project.org'); library(ggplot2)"
+RUN Rscript -e "install.packages('reshape2', repos='https://cloud.r-project.org'); library(reshape2)"
+RUN Rscript -e "install.packages('gridExtra', repos='https://cloud.r-project.org'); library(gridExtra)"
+RUN Rscript -e "install.packages('RColorBrewer', repos='https://cloud.r-project.org'); library(RColorBrewer)"
+RUN Rscript -e "install.packages('cowplot', repos='https://cloud.r-project.org'); library(cowplot)"
+RUN Rscript -e "install.packages('svglite', repos='https://cloud.r-project.org'); library(svglite)"
+RUN Rscript -e "install.packages('dplyr', repos='https://cloud.r-project.org'); library(dplyr)"
 
 # Optional: test that packages load
 RUN Rscript -e "library(ggplot2); library(reshape2); library(gridExtra); library(RColorBrewer); library(cowplot); library(svglite); cat('R OK\n')"

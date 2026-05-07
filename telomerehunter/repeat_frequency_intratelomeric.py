@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/env python3
 
 # Copyright 2015 Lina Sieverling
 
@@ -49,7 +49,7 @@ def repeat_frequency_intratelomeric(input_path, out_dir, pid, repeats):
 	#########################
 
 	# open input bam_file for reading
-	bamfile = pysam.Samfile( input_path + "/" + pid + "_filtered_intratelomeric.bam", "rb" )
+	bamfile = pysam.AlignmentFile( input_path + "/" + pid + "_filtered_intratelomeric.bam", "rb" )
 
 
 	##################################

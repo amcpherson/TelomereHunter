@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/env python3
 
 # Copyright 2018 Lina Sieverling, Lars Feuerbach
 
@@ -39,7 +39,7 @@ def assure_path_exists(path):
 
 def screenBamFile(bam_file, patterns, quals, qual_threshold=20):
 
-    bamfile = pysam.Samfile( bam_file, "rb" )
+    bamfile = pysam.AlignmentFile( bam_file, "rb" )
 
     pattern = "GGG"
     offset = -3
@@ -127,9 +127,7 @@ def invertPatterns(patterns):
 def showPatterns(patterns,quals):
   """Sorts and displays patterns and qualites"""
 #  p2 = {}
-  keys = patterns.keys()
-  keys.sort()
-  keys.reverse()
+  keys = sorted(patterns.keys(), reverse=True)
   output = "\t".join(["Pattern", "Count", "Frequency_in_Percent", "Avg_Qual_pos1", "Avg_Qual_pos2", "Avg_Qual_pos3", "Avg_Qual_pos4", "Avg_Qual_pos5", "Avg_Qual_pos6"]) + "\n"
   counts = 0
   for key in keys:
@@ -137,12 +135,12 @@ def showPatterns(patterns,quals):
   for key in keys:
 #    if patterns[key].find('N')==-1:         # don't output patterns with N
       (qs1,qs2,qs3,qs4,qs5,qs6) = quals[patterns[key]] # lists of qualites for position 1, 2 and 3
-      q1_mean = sum(qs1)/len(qs1)
-      q2_mean = sum(qs2)/len(qs2)
-      q3_mean = sum(qs3)/len(qs3)
-      q4_mean = sum(qs4)/len(qs4)
-      q5_mean = sum(qs5)/len(qs5)
-      q6_mean = sum(qs6)/len(qs6)
+      q1_mean = sum(qs1)//len(qs1)
+      q2_mean = sum(qs2)//len(qs2)
+      q3_mean = sum(qs3)//len(qs3)
+      q4_mean = sum(qs4)//len(qs4)
+      q5_mean = sum(qs5)//len(qs5)
+      q6_mean = sum(qs6)//len(qs6)
       output += "\t".join( [key[1] + "GGG" ,str(key[0]), str(key[0]*100.0/counts), str(q1_mean), str(q2_mean), str(q3_mean), str(q4_mean), str(q5_mean), str(q6_mean)] ) +"\n"
   return output
 

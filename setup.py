@@ -17,12 +17,13 @@ setup(
         "scripts/telomerehunter",
     ],
     install_requires=[
-        "PyPDF2",
+        "PyPDF2>=3.0",
         "numpy",
         "pysam",
     ],
+    python_requires=">=3.7",
     classifiers=[
-        "Programming Language :: Python :: 2",
+        "Programming Language :: Python :: 3",
         "License :: OSI Approved :: GNU General Public License (GPL)",
         "Operating System :: OS Independent",
     ],
