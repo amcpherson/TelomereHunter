@@ -1,0 +1,262 @@
+#!/usr/bin/env python3
+
+# Single-cell TelomereHunter
+# Estimates per-cell telomere content from a barcoded BAM file (CB tags)
+
+import os
+import sys
+import argparse
+import inspect
+import errno
+import re
+
+import telomerehunter
+from telomerehunter.filter_telomere_reads_sc import filter_telomere_reads_sc
+from telomerehunter.sort_telomere_reads_sc import sort_telomere_reads_sc
+from telomerehunter.estimate_telomere_content_sc import (estimate_telomere_content_sc,
+                                                         tvr_screen_sc,
+                                                         write_tvr_table_sc)
+
+source_directory = os.path.dirname(inspect.getsourcefile(telomerehunter))
+
+
+def mkdir_p(path):
+    try:
+        os.makedirs(path)
+    except OSError as exc:
+        if exc.errno == errno.EEXIST and os.path.isdir(path):
+            pass
+        else:
+            raise
+
+
+def main():
+
+    def file_exists(parser, x):
+        if not os.path.exists(x):
+            parser.error("The file %s does not exist!" % x)
+        return x
+
+    ################################
+    ### print header             ###
+    ################################
+
+    sys.stdout.write("\n")
+    sys.stdout.write("\tTelomereHunter Single-Cell Mode\n")
+    sys.stdout.write("\tBased on TelomereHunter (C) 2015 Lina Sieverling, Philip Ginsbach, Lars Feuerbach\n")
+    sys.stdout.write("\n")
+
+
+    ################################
+    ### get and check parameters ###
+    ################################
+
+    parser = argparse.ArgumentParser(
+        description='Estimation of per-cell telomere content from a barcoded single-cell BAM file.',
+        epilog='Adapted from TelomereHunter for single-cell data with CB-tagged reads.')
+
+    parser.add_argument('-i', '--inputBam', type=lambda x: file_exists(parser, x), dest="input_bam", required=True,
+            help="Path to the indexed input BAM file with CB-tagged reads.")
+    parser.add_argument('-o', '--outPath', type=str, dest="parent_outdir", required=True, metavar='OUTPUT_DIR',
+            help="Path to the output directory.")
+    parser.add_argument('-p', '--pid', type=str, dest="pid", required=True,
+            help="Sample name used in output files.")
+    parser.add_argument('-b', '--bandingFile', type=lambda x: file_exists(parser, x), dest="banding_file",
+            default=source_directory + '/hg19_cytoBand.txt',
+            help="Path to cytoBand file. Default: hg19.")
+    parser.add_argument('-rt', '--repeatThreshold', type=int, dest="repeat_threshold_set",
+            help="Number of repeats for a read to be telomeric. Default: 6 per 100 bp read length.")
+    parser.add_argument('-rl', '--perReadLength', dest="per_read_length", action="store_true",
+            help="Set repeat threshold per 100 bp read length.")
+    parser.add_argument('-mqt', '--mappingQualityThreshold', type=int, dest="mapq_threshold", default=8,
+            help="Mapping quality threshold (default=8).")
+    parser.add_argument('-d', '--removeDuplicates', dest="remove_duplicates", action="store_true",
+            help="Remove reads marked as duplicates.")
+    parser.add_argument('-r', '--repeats', nargs='+', dest="repeats", type=str,
+            default=["TTAGGG", "TGAGGG", "TCAGGG", "TTGGGG"],
+            help="Telomere repeat types to search for. Default: TTAGGG TGAGGG TCAGGG TTGGGG.")
+    parser.add_argument('-con', '--consecutive', dest="consecutive", action="store_true",
+            help="Search for consecutive repeats.")
+    parser.add_argument('-gc1', '--lowerGC', type=int, dest="lowerGC", default=48,
+            help="Lower GC limit for correction (default=48).")
+    parser.add_argument('-gc2', '--upperGC', type=int, dest="upperGC", default=52,
+            help="Upper GC limit for correction (default=52).")
+    parser.add_argument('-mr', '--minReads', type=int, dest="min_reads", default=500,
+            help="Minimum reads per cell to include in output (default=500).")
+    parser.add_argument('-mgc', '--minGCReads', type=int, dest="min_gc_reads", default=100,
+            help="Minimum reads in GC window for per-cell correction; otherwise use bulk (default=100).")
+    parser.add_argument('-bt', '--barcodeTag', type=str, dest="barcode_tag", default="CB",
+            help="BAM tag for cell barcode (default=CB).")
+    parser.add_argument('--noTVR', dest="no_tvr", action="store_true",
+            help="Skip TVR screening step.")
+    parser.add_argument('-nf', '--noFiltering', dest="noFiltering", action="store_true",
+            help="Skip filtering step (use existing filtered BAM).")
+    parser.add_argument('-pff', '--plotFileFormat', dest="plotFileFormat", default='pdf',
+            choices=['pdf', 'png', 'svg', 'all'],
+            help="File format of output diagrams (default=pdf).")
+
+    args = parser.parse_args()
+
+
+    # Validate parameters
+    if args.mapq_threshold < 0 or args.mapq_threshold > 40:
+        parser.error('argument -mqt must be between 0 and 40.')
+
+    if args.lowerGC < 0 or args.lowerGC > 100:
+        parser.error('argument -gc1 must be between 0 and 100.')
+
+    if args.upperGC < 0 or args.upperGC > 100:
+        parser.error('argument -gc2 must be between 0 and 100.')
+
+    if args.lowerGC >= args.upperGC:
+        parser.error('argument -gc1 must be less than -gc2.')
+
+    for repeat in args.repeats:
+        if re.search(r'[^ACGT]', repeat):
+            parser.error('argument -r/--repeats should only contain ACGT.')
+
+
+    ##############################
+    ### setup output directory ###
+    ##############################
+
+    outdir = os.path.join(args.parent_outdir, args.pid)
+    mkdir_p(outdir)
+
+
+    ##############################
+    ### get read length        ###
+    ##############################
+
+    read_length_str = telomerehunter.get_repeat_threshold.get_read_lengths(args.input_bam)
+
+
+    ##############################
+    ### get repeat threshold   ###
+    ##############################
+
+    repeat_threshold_set = args.repeat_threshold_set
+    per_read_length = args.per_read_length
+
+    if not repeat_threshold_set:
+        sys.stdout.write('Repeat threshold not set. Using 6 per 100 bp read length.\n')
+        repeat_threshold_set = 6
+        per_read_length = True
+
+    if per_read_length:
+        sys.stdout.write('Calculating repeat threshold: ')
+        (repeat_threshold_calc, repeat_threshold_str) = telomerehunter.get_repeat_threshold.get_repeat_threshold(
+            read_length_str, repeat_threshold_set)
+    else:
+        repeat_threshold_calc = repeat_threshold_set
+        repeat_threshold_str = str(repeat_threshold_set)
+
+
+    ##############################
+    ### Step 1: Filter reads   ###
+    ##############################
+
+    if not args.noFiltering:
+        sys.stdout.write('\n------ Filtering telomere reads ------\n')
+        per_cell_gc, per_cell_total_reads, per_cell_tel_reads, bulk_gc = filter_telomere_reads_sc(
+            bam_file=args.input_bam,
+            band_file=args.banding_file,
+            out_dir=outdir,
+            pid=args.pid,
+            repeat_threshold_calc=repeat_threshold_calc,
+            repeat_threshold_set=repeat_threshold_set,
+            mapq_threshold=args.mapq_threshold,
+            repeats=args.repeats,
+            consecutive_flag=args.consecutive,
+            remove_duplicates=args.remove_duplicates,
+            barcode_tag=args.barcode_tag,
+            min_reads=args.min_reads)
+    else:
+        sys.stderr.write("ERROR: --noFiltering not supported in single-cell mode "
+                        "(per-cell stats are computed during filtering).\n")
+        sys.exit(1)
+
+
+    ##############################
+    ### Step 2: Sort reads     ###
+    ##############################
+
+    sys.stdout.write('\n------ Sorting telomere reads into fractions ------\n')
+    per_cell_fractions, per_cell_intratel_gc = sort_telomere_reads_sc(
+        input_dir=outdir,
+        band_file=args.banding_file,
+        out_dir=outdir,
+        pid=args.pid,
+        mapq_threshold=args.mapq_threshold,
+        repeats=args.repeats,
+        barcode_tag=args.barcode_tag)
+
+
+    ##############################
+    ### Step 3: Estimate       ###
+    ##############################
+
+    sys.stdout.write('\n------ Estimating per-cell telomere content ------\n')
+    per_cell_results = estimate_telomere_content_sc(
+        per_cell_gc=per_cell_gc,
+        per_cell_total_reads=per_cell_total_reads,
+        per_cell_tel_reads=per_cell_tel_reads,
+        per_cell_fractions=per_cell_fractions,
+        per_cell_intratel_gc=per_cell_intratel_gc,
+        bulk_gc=bulk_gc,
+        out_dir=outdir,
+        pid=args.pid,
+        read_length=read_length_str,
+        repeat_threshold_set=repeat_threshold_set,
+        per_read_length=per_read_length,
+        repeat_threshold_calc=repeat_threshold_str,
+        gc_lower=args.lowerGC,
+        gc_upper=args.upperGC,
+        min_reads=args.min_reads,
+        min_gc_reads=args.min_gc_reads)
+
+
+    ##############################
+    ### Step 4: TVR screen     ###
+    ##############################
+
+    if not args.no_tvr:
+        sys.stdout.write('\n------ TVR screening per cell ------\n')
+        per_cell_tvr = tvr_screen_sc(
+            input_dir=outdir,
+            pid=args.pid,
+            barcode_tag=args.barcode_tag,
+            min_base_quality=20)
+
+        write_tvr_table_sc(
+            per_cell_tvr=per_cell_tvr,
+            out_dir=outdir,
+            pid=args.pid,
+            min_reads=args.min_reads,
+            per_cell_total_reads=per_cell_total_reads)
+
+
+    ##############################
+    ### Step 5: GC content plot ###
+    ##############################
+
+    sys.stdout.write('\n------ Making per-cell GC content plot ------\n')
+    os.system("R --no-save --slave --args %s %s %s %i %i < %s/plot_gc_content_sc.R" % (
+        args.parent_outdir, args.pid, args.plotFileFormat, args.lowerGC, args.upperGC,
+        source_directory))
+
+
+    ##############################
+    ### Done                    ###
+    ##############################
+
+    sys.stdout.write('\n------ Done ------\n')
+    sys.stdout.write('Output directory: %s\n' % outdir)
+    sys.stdout.write('Per-cell telomere content: %s\n' % os.path.join(outdir, args.pid + '_per_cell_telomere_content.tsv'))
+    if not args.no_tvr:
+        sys.stdout.write('Per-cell TVR counts: %s\n' % os.path.join(outdir, args.pid + '_per_cell_TVR_counts.tsv'))
+    sys.stdout.write('\n')
+
+
+if __name__ == '__main__':
+    main()
