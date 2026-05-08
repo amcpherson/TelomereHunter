@@ -28,6 +28,7 @@ plot_file_format = commandArgs[8]
 gc_lower_limit = as.numeric(commandArgs[9])
 gc_upper_limit = as.numeric(commandArgs[10])
 
+library(ggplot2, quietly=TRUE, warn.conflicts=FALSE)
 library(cowplot, quietly=TRUE, warn.conflicts=FALSE)
 library(reshape2, quietly=TRUE, warn.conflicts=FALSE)
 
