@@ -1,4 +1,4 @@
-# Usage: R --no-save --slave --args <OUT_DIR> <PID> <PLOT_FILE_FORMAT> <GC_LOWER_LIMIT> <GC_UPPER_LIMIT> < plot_gc_content_sc.R
+# Usage: Rscript plot_gc_content_sc.R <OUT_DIR> <PID> <PLOT_FILE_FORMAT> <GC_LOWER_LIMIT> <GC_UPPER_LIMIT>
 # Description: Makes a per-cell GC content plot showing GC bias for all reads and intratelomeric reads
 
 library(ggplot2, quietly=TRUE, warn.conflicts=FALSE)
@@ -6,12 +6,12 @@ library(cowplot, quietly=TRUE, warn.conflicts=FALSE)
 library(reshape2, quietly=TRUE, warn.conflicts=FALSE)
 
 # get commandline arguments
-commandArgs = commandArgs()
-out_dir = commandArgs[5]
-pid = commandArgs[6]
-plot_file_format = commandArgs[7]
-gc_lower_limit = as.numeric(commandArgs[8])
-gc_upper_limit = as.numeric(commandArgs[9])
+args = commandArgs(trailingOnly = TRUE)
+out_dir = args[1]
+pid = args[2]
+plot_file_format = args[3]
+gc_lower_limit = as.numeric(args[4])
+gc_upper_limit = as.numeric(args[5])
 
 if (plot_file_format == "all") {
   plot_file_format = c("pdf", "png", "svg")
@@ -38,17 +38,23 @@ names(gc_all_totals)[2] = "total"
 gc_all = merge(gc_all, gc_all_totals, by = "cell_barcode")
 gc_all$fraction_of_reads = gc_all$read_count / gc_all$total
 
-gc_intratel_totals = aggregate(read_count ~ cell_barcode, data = gc_intratel, FUN = sum)
-names(gc_intratel_totals)[2] = "total"
-gc_intratel = merge(gc_intratel, gc_intratel_totals, by = "cell_barcode")
-gc_intratel$fraction_of_reads = gc_intratel$read_count / gc_intratel$total
-
 # Label read types
 gc_all$read_type = "All reads"
-gc_intratel$read_type = "Intratelomeric reads"
 
-dfm = rbind(gc_all[, c("cell_barcode", "gc_content_percent", "fraction_of_reads", "read_type")],
-            gc_intratel[, c("cell_barcode", "gc_content_percent", "fraction_of_reads", "read_type")])
+if (nrow(gc_intratel) > 0) {
+  gc_intratel_totals = aggregate(read_count ~ cell_barcode, data = gc_intratel, FUN = sum)
+  names(gc_intratel_totals)[2] = "total"
+  gc_intratel = merge(gc_intratel, gc_intratel_totals, by = "cell_barcode")
+  gc_intratel$fraction_of_reads = gc_intratel$read_count / gc_intratel$total
+  gc_intratel$read_type = "Intratelomeric reads"
+
+  dfm = rbind(gc_all[, c("cell_barcode", "gc_content_percent", "fraction_of_reads", "read_type")],
+              gc_intratel[, c("cell_barcode", "gc_content_percent", "fraction_of_reads", "read_type")])
+} else {
+  gc_intratel$fraction_of_reads = numeric(0)
+  gc_intratel$read_type = character(0)
+  dfm = gc_all[, c("cell_barcode", "gc_content_percent", "fraction_of_reads", "read_type")]
+}
 
 gc_bins = c(gc_lower_limit:gc_upper_limit)
 
@@ -70,10 +76,14 @@ for (cell in cells) {
   df_cell_intratel = gc_intratel[gc_intratel$cell_barcode == cell, ]
 
   df_cell_all$read_type = "All reads"
-  df_cell_intratel$read_type = "Intratelomeric reads"
 
-  df_cell = rbind(df_cell_all[, c("gc_content_percent", "fraction_of_reads", "read_type")],
-                  df_cell_intratel[, c("gc_content_percent", "fraction_of_reads", "read_type")])
+  if (nrow(df_cell_intratel) > 0) {
+    df_cell_intratel$read_type = "Intratelomeric reads"
+    df_cell = rbind(df_cell_all[, c("gc_content_percent", "fraction_of_reads", "read_type")],
+                    df_cell_intratel[, c("gc_content_percent", "fraction_of_reads", "read_type")])
+  } else {
+    df_cell = df_cell_all[, c("gc_content_percent", "fraction_of_reads", "read_type")]
+  }
 
   ymax_cell = max(df_cell_all$fraction_of_reads, na.rm = TRUE)
 
@@ -108,10 +118,14 @@ if (length(other_formats) > 0) {
     df_cell_intratel = gc_intratel[gc_intratel$cell_barcode == cell, ]
 
     df_cell_all$read_type = "All reads"
-    df_cell_intratel$read_type = "Intratelomeric reads"
 
-    df_cell = rbind(df_cell_all[, c("gc_content_percent", "fraction_of_reads", "read_type")],
-                    df_cell_intratel[, c("gc_content_percent", "fraction_of_reads", "read_type")])
+    if (nrow(df_cell_intratel) > 0) {
+      df_cell_intratel$read_type = "Intratelomeric reads"
+      df_cell = rbind(df_cell_all[, c("gc_content_percent", "fraction_of_reads", "read_type")],
+                      df_cell_intratel[, c("gc_content_percent", "fraction_of_reads", "read_type")])
+    } else {
+      df_cell = df_cell_all[, c("gc_content_percent", "fraction_of_reads", "read_type")]
+    }
 
     ymax_cell = max(df_cell_all$fraction_of_reads, na.rm = TRUE)
 
