@@ -9,6 +9,7 @@ import argparse
 import inspect
 import errno
 import re
+import subprocess
 
 import telomerehunter
 from telomerehunter.filter_telomere_reads_sc import filter_telomere_reads_sc
@@ -241,9 +242,10 @@ def main():
     ##############################
 
     sys.stdout.write('\n------ Making per-cell GC content plot ------\n')
-    os.system("R --no-save --slave --args %s %s %s %i %i < %s/plot_gc_content_sc.R" % (
-        args.parent_outdir, args.pid, args.plotFileFormat, args.lowerGC, args.upperGC,
-        source_directory))
+    r_script = os.path.join(source_directory, 'plot_gc_content_sc.R')
+    subprocess.check_call(["Rscript", r_script,
+                           args.parent_outdir, args.pid, args.plotFileFormat,
+                           str(args.lowerGC), str(args.upperGC)])
 
 
     ##############################
